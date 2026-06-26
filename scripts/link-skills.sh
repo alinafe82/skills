@@ -7,11 +7,29 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$HOME/.claude/skills"
 
+resolve_path() {
+  local path="$1"
+  local dir
+  local target
+
+  while [ -L "$path" ]; do
+    dir="$(cd -P "$(dirname "$path")" && pwd)"
+    target="$(readlink "$path")"
+    case "$target" in
+      /*) path="$target" ;;
+      *) path="$dir/$target" ;;
+    esac
+  done
+
+  dir="$(cd -P "$(dirname "$path")" && pwd)"
+  printf '%s/%s\n' "$dir" "$(basename "$path")"
+}
+
 # If ~/.claude/skills is a symlink that resolves into this repo, we'd end up
 # writing the per-skill symlinks back into the repo's own skills/ tree. Detect
 # and bail out instead of polluting the working copy.
 if [ -L "$DEST" ]; then
-  resolved="$(readlink -f "$DEST")"
+  resolved="$(resolve_path "$DEST")"
   case "$resolved" in
     "$REPO"|"$REPO"/*)
       echo "error: $DEST is a symlink into this repo ($resolved)." >&2
