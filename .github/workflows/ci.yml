@@ -19,19 +19,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: package-lock.json
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
       - name: Install locked dependencies
-        run: npm ci
+        run: |
+          npm ci
+          python -m pip install --disable-pip-version-check --require-hashes \
+            --requirement requirements-ci.lock
       - name: Audit dependencies
         run: npm audit --audit-level=high
       - name: Validate JSON metadata
@@ -41,54 +44,4 @@ jobs:
       - name: Check shell syntax
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
       - name: Validate skill entrypoints
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-
-          skills = sorted(Path("skills").rglob("SKILL.md"))
-          if not skills:
-              raise SystemExit("No skill entrypoints found")
-
-          names = {}
-          for skill in skills:
-              text = skill.read_text(encoding="utf-8")
-              if not text.startswith("---\n") or "\n---\n" not in text[4:]:
-                  raise SystemExit(f"Invalid frontmatter delimiters: {skill}")
-              frontmatter = text[4:].split("\n---\n", 1)[0]
-              fields = {}
-              for line in frontmatter.splitlines():
-                  match = re.match(r"^([a-z][a-z0-9_-]*):\s*(.+)$", line)
-                  if match:
-                      fields[match.group(1)] = match.group(2).strip().strip('"')
-              for required in ("name", "description"):
-                  if not fields.get(required):
-                      raise SystemExit(f"Missing {required} in {skill}")
-              if fields["name"] in names:
-                  raise SystemExit(
-                      f"Duplicate skill name {fields['name']}: {names[fields['name']]} and {skill}"
-                  )
-              names[fields["name"]] = skill
-
-          readme = Path("README.md").read_text(encoding="utf-8")
-          catalogued_skills = [
-              skill
-              for skill in skills
-              if skill.parts[1] not in {"deprecated", "in-progress", "personal"}
-          ]
-          uncatalogued = [
-              str(skill) for skill in catalogued_skills if f"./{skill}" not in readme
-          ]
-          if uncatalogued:
-              raise SystemExit("Skills missing from README catalog:\n" + "\n".join(uncatalogued))
-
-          missing_links = []
-          for target in re.findall(r"\[[^]]+\]\(([^)]+)\)", readme):
-              if target.startswith(("http://", "https://", "mailto:", "#")):
-                  continue
-              path = Path(target.split("#", 1)[0])
-              if not path.exists():
-                  missing_links.append(target)
-          if missing_links:
-              raise SystemExit("Broken README links:\n" + "\n".join(missing_links))
-          PY
+        run: python scripts/validate_skill_catalog.py
