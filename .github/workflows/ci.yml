@@ -1,0 +1,42 @@
+name: Skills CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skills-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+      - name: Validate JSON metadata
+        run: find . -path ./.git -prune -o -name '*.json' -print0 | xargs -0 -n1 python3 -m json.tool >/dev/null
+      - name: Check shell syntax
+        run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+      - name: Validate skill entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(find skills -type f -name SKILL.md | wc -l | tr -d ' ')"
+          test "${count}" -gt 0
+          while IFS= read -r skill; do
+            test "$(head -n 1 "${skill}")" = "---"
+          done < <(find skills -type f -name SKILL.md -print)
